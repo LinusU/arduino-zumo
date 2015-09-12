@@ -23,6 +23,8 @@ struct HalNine {
   float power;
   float turn;
 
+  bool spinning;
+
   uint32_t leftInMove;
   uint32_t lastUpdated;
 
@@ -45,7 +47,7 @@ void setTimeout (void (*func)(void *), uint32_t delay, void *userData) {
   theItem.pit = millis() + delay;
   theItem.func = func;
   theItem.userData = userData;
-  
+
   _setTimeoutQueue.add(theItem);
 }
 
@@ -80,7 +82,6 @@ void triggerSetTimeout () {
 uint32_t rnd (uint32_t _max) {
   return (millis() % _max);
 }
-
 
 
 
@@ -143,6 +144,26 @@ uint32_t move_SpinForwardRight90 (struct HalNine *robot) {
   return 320;
 }
 
+uint32_t move_spinAround (struct HalNine *robot) {
+  robot->spinning = true;
+
+  return 300 + rnd(800);
+}
+
+uint32_t move_totalyRandom (struct HalNine *robot) {
+  uint32_t spinOrNot = rnd(5);
+
+  if (spinOrNot == 0) {
+    robot->spinning = true;
+    return 300 + rnd(800);
+  }
+
+  robot->power = 0.5 + (rnd(100) / 100) * 0.5;
+  robot->turn = ((rnd(100) / 100) * 2) - 1;
+
+   return 300 + rnd(800);
+}
+
 
 
 
@@ -179,6 +200,9 @@ void doA_OneEighty (struct HalNine *robot) {
   HalNine_enqueueMove(robot, move_SpinForwardRight90);
 }
 
+void doA_SpinAround (struct HalNine *robot) {
+  HalNine_enqueueMove(robot, move_spinAround);
+}
 
 
 
@@ -198,13 +222,20 @@ void doA_OneEighty (struct HalNine *robot) {
 /**** HAL9000 IMPLEMENTATION ****/
 
 void HalNine_doRandom (struct HalNine *robot) {
-  uint32_t daMove = (millis() % 4);
+
+  HalNine_enqueueMove(robot, move_totalyRandom);
+
+
+
+  return ;
+  uint32_t daMove = (millis() % 5);
 
   switch (daMove) {
     case 0: doA_SBendLeft(robot); break;
     case 1: doA_SBendRight(robot); break;
     case 2: doA_TurnAroundLeft(robot); break;
     case 3: doA_TurnAroundRight(robot); break;
+    case 4: doA_SpinAround(robot); break;
   }
 }
 
@@ -217,18 +248,24 @@ void HalNine_step (struct HalNine *robot) {
   if (robot->leftInMove > delta) {
     robot->leftInMove -= delta;
   } else {
+    robot->spinning = false;
+
     if (robot->moveQueue.size() == 0) {
       HalNine_doRandom(robot);
     }
-    
+
     MoveDesc nextMove = robot->moveQueue.shift();
     robot->leftInMove = nextMove.func(robot);
   }
 
-  motors.setSpeeds(
-    (1 + robot->turn) * robot->power * 400,
-    (1 - robot->turn) * robot->power * 400
-  );
+  if (robot->spinning) {
+    motors.setSpeeds(400, -400);
+  } else {
+    motors.setSpeeds(
+      (1 + robot->turn) * robot->power * 400,
+      (1 - robot->turn) * robot->power * 400
+    );
+  }
 }
 
 void HalNine_haltAndCatchFire (struct HalNine *robot) {
@@ -237,7 +274,7 @@ void HalNine_haltAndCatchFire (struct HalNine *robot) {
 }
 
 void HalNine_init (struct HalNine *robot) {
-  
+
   robot->power = 0;
   robot->turn = 0;
   robot->leftInMove = 0;
@@ -249,7 +286,7 @@ void HalNine_enqueueMove (struct HalNine *robot, uint32_t (*func)(struct HalNine
   MoveDesc desc;
 
   desc.func = func;
-  
+
   robot->moveQueue.add(desc);
 }
 
@@ -279,7 +316,7 @@ void resetDebouncing (void *userData) {
 void onEdge () {
 //  if (edgeDebouncing) return;
 //  edgeDebouncing = true;
-  
+
   HalNine_abortAndClear(&globalRobot);
 
   motors.setSpeeds(-200, -200);
@@ -289,7 +326,7 @@ void onEdge () {
   motors.setSpeeds(0, 0);
 
   HalNine_doRandom(&globalRobot);
-  
+
 //  doA_OneEighty(&globalRobot);
 
 //  setTimeout(resetDebouncing, 150);
@@ -298,7 +335,7 @@ void onEdge () {
 
 void setup() {
   Serial.begin(9600);
-  
+
   sensors.init();
   motors.setSpeeds(0, 0);
 
@@ -321,4 +358,3 @@ void loop() {
     onEdge();
   }
 }
-
